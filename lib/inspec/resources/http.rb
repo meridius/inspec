@@ -13,7 +13,8 @@ module Inspec::Resources
     supports platform: "unix"
     desc "Use the http InSpec audit resource to test http call."
     example <<~EXAMPLE
-      describe http('http://localhost:8080/ping', auth: {user: 'user', pass: 'test'}, params: {format: 'html'}) do
+      # To disable proxy, set it to empty string.
+      describe http('http://localhost:8080/ping', auth: {user: 'user', pass: 'test'}, params: {format: 'html'}, proxy: 'http://foo:8080') do
         its('status') { should cmp 200 }
         its('body') { should cmp 'pong' }
         its('headers.Content-Type') { should cmp 'text/html' }
@@ -88,6 +89,10 @@ module Inspec::Resources
           opts.fetch(:params, nil)
         end
 
+        def proxy
+            opts.fetch(:proxy, nil)
+        end
+
         def username
           opts.fetch(:auth, {})[:user]
         end
@@ -144,6 +149,11 @@ module Inspec::Resources
             builder.use FaradayMiddleware::FollowRedirects, limit: max_redirects if max_redirects > 0
             builder.adapter Faraday.default_adapter
           end
+
+          # set proxy
+          # This has to be set either to nil or "".
+          # "ENV['http_proxy'] = nil" doesn't have any effect.
+          conn.proxy = proxy unless proxy.nil?
 
           # set basic authentication
           conn.basic_auth username, password unless username.nil? || password.nil?
@@ -224,7 +234,9 @@ module Inspec::Resources
         end
 
         def curl_command # rubocop:disable Metrics/AbcSize
-          cmd = ["curl -i"]
+          cmd = []
+          cmd << http_proxy=proxy unless proxy.nil?
+          cmd << "curl -i"
 
           # Use curl's --head option when the method requested is HEAD. Otherwise,
           # the user may experience a timeout when curl does not properly close
